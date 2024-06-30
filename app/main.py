@@ -4,7 +4,17 @@ import zlib
 import hashlib
 
 
-def read_blob():
+def init():
+    os.mkdir(".git")
+    os.mkdir(".git/objects")
+    os.mkdir(".git/refs")
+    with open(".git/HEAD", "w") as f:
+        f.write("ref: refs/heads/main\n")
+    print("Initialized git directory")
+
+
+# read blob
+def cat_file():
     if sys.argv[2] == "-p":
         blob_sha = sys.argv[3]
         with open(f".git/objects/{blob_sha[:2]}/{blob_sha[2:]}", "rb") as file:
@@ -13,7 +23,8 @@ def read_blob():
             print(content.decode("utf-8"), end="")
 
 
-def create_blob():
+# create blob
+def hash_object():
     with open(sys.argv[3], "r") as file:
         content = file.read()
         header = f"blob {len(content)}"
@@ -25,7 +36,8 @@ def create_blob():
             with open(f".git/objects/{hash_value[:2]}/{hash_value[2:]}", "wb") as blob:
                 blob.write(zlib.compress(bytes(f"{header}\0{content}", "utf-8")))
 
-def read_tree():
+# read tree
+def ls_tree():
     tree_sha = sys.argv[3]
     with open(f".git/objects/{tree_sha[:2]}/{tree_sha[2:]}", "rb") as file:
         tree = zlib.decompress(file.read())
@@ -54,23 +66,48 @@ def read_tree():
                 print(f"{mode} {mode_name} {sha.hex()}    {name.decode("utf-8")}")
 
 
+def add():
+    index_file = ".git/index"
+    files_to_add = sys.argv[2:]     # List of files passed as arguments
+    index_entries = []
+
+    if os.path.exists(index_file):
+        with open(index_file, "rb") as f:
+            index_entries = f.read().splitlines()
+
+    for file_path in files_to_add:
+        if os.path.isfile(file_path):
+            with open(file_path, "r") as f:
+                content = f.read()
+            header = f"blob {len(content)}"
+            blob_data = bytes(f"{header}\0{content}", "utf-8")
+            blob_sha = hashlib.sha1(blob_data).hexdigest()
+
+            if not os.path.isdir(f".git/objects/{blob_sha[:2]}"):
+                os.mkdir(f".git/objects/{blob_sha[:2]}")
+            with open(f".git/objects/{blob_sha[:2]}/{blob_sha[2:]}", "wb") as blob:
+                blob.write(zlib.compress(blob_data))
+
+            index_entries.append(f"{blob_sha} {file_path}")
+
+    with open(index_file, "w") as f:
+        f.write("\n".join(index_entries))
+
+    print(f"Added {len(files_to_add)} files to the index")
 
 
 def main():
     command = sys.argv[1]
     if command == "init":
-        os.mkdir(".git")
-        os.mkdir(".git/objects")
-        os.mkdir(".git/refs")
-        with open(".git/HEAD", "w") as f:
-            f.write("ref: refs/heads/main\n")
-        print("Initialized git directory")
+        init()
     elif command == "cat-file":
-        read_blob()
+        cat_file()
     elif command == "hash-object":
-        create_blob()
+        hash_object()
     elif command == "ls-tree":
-        read_tree()
+        ls_tree()
+    elif command == "add":
+        add()
     else:
         raise RuntimeError(f"Unknown command #{command}")
 
