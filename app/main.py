@@ -4,7 +4,17 @@ import zlib
 import hashlib
 
 
-def read_blob():
+def init():
+    os.mkdir(".git")
+    os.mkdir(".git/objects")
+    os.mkdir(".git/refs")
+    with open(".git/HEAD", "w") as f:
+        f.write("ref: refs/heads/main\n")
+    print("Initialized git directory")
+
+
+# read blob
+def cat_file():
     if sys.argv[2] == "-p":
         blob_sha = sys.argv[3]
         with open(f".git/objects/{blob_sha[:2]}/{blob_sha[2:]}", "rb") as file:
@@ -13,7 +23,8 @@ def read_blob():
             print(content.decode("utf-8"), end="")
 
 
-def create_blob():
+# create blob
+def hash_object():
     with open(sys.argv[3], "r") as file:
         content = file.read()
         header = f"blob {len(content)}"
@@ -25,7 +36,8 @@ def create_blob():
             with open(f".git/objects/{hash_value[:2]}/{hash_value[2:]}", "wb") as blob:
                 blob.write(zlib.compress(bytes(f"{header}\0{content}", "utf-8")))
 
-def read_tree():
+# read tree
+def ls_tree():
     tree_sha = sys.argv[3]
     with open(f".git/objects/{tree_sha[:2]}/{tree_sha[2:]}", "rb") as file:
         tree = zlib.decompress(file.read())
@@ -59,18 +71,13 @@ def read_tree():
 def main():
     command = sys.argv[1]
     if command == "init":
-        os.mkdir(".git")
-        os.mkdir(".git/objects")
-        os.mkdir(".git/refs")
-        with open(".git/HEAD", "w") as f:
-            f.write("ref: refs/heads/main\n")
-        print("Initialized git directory")
+        init()
     elif command == "cat-file":
-        read_blob()
+        cat_file()
     elif command == "hash-object":
-        create_blob()
+        hash_object()
     elif command == "ls-tree":
-        read_tree()
+        ls_tree()
     else:
         raise RuntimeError(f"Unknown command #{command}")
 
