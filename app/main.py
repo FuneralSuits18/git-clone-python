@@ -66,6 +66,34 @@ def ls_tree():
                 print(f"{mode} {mode_name} {sha.hex()}    {name.decode("utf-8")}")
 
 
+def add():
+    index_file = ".git/index"
+    files_to_add = sys.argv[2:]     # List of files passed as arguments
+    index_entries = []
+
+    if os.path.exists(index_file):
+        with open(index_file, "rb") as f:
+            index_entries = f.read().splitlines()
+
+    for file_path in files_to_add:
+        if os.path.isfile(file_path):
+            with open(file_path, "r") as f:
+                content = f.read()
+            header = f"blob {len(content)}"
+            blob_data = bytes(f"{header}\0{content}", "utf-8")
+            blob_sha = hashlib.sha1(blob_data).hexdigest()
+
+            if not os.path.isdir(f".git/objects/{blob_sha[:2]}"):
+                os.mkdir(f".git/objects/{blob_sha[:2]}")
+            with open(f".git/objects/{blob_sha[:2]}/{blob_sha[2:]}", "wb") as blob:
+                blob.write(zlib.compress(blob_data))
+
+            index_entries.append(f"{blob_sha} {file_path}")
+
+    with open(index_file, "w") as f:
+        f.write("\n".join(index_entries))
+
+    print(f"Added {len(files_to_add)} files to the index")
 
 
 def main():
@@ -78,6 +106,8 @@ def main():
         hash_object()
     elif command == "ls-tree":
         ls_tree()
+    elif command == "add":
+        add()
     else:
         raise RuntimeError(f"Unknown command #{command}")
 
