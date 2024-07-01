@@ -2,6 +2,7 @@ import sys
 import os
 import zlib
 import hashlib
+import time
 
 
 def init():
@@ -19,22 +20,22 @@ def cat_file():
         blob_sha = sys.argv[3]
         with open(f".git/objects/{blob_sha[:2]}/{blob_sha[2:]}", "rb") as f:
             blob = zlib.decompress(f.read())
-            header, content = blob.split(b"\0", maxsplit=1)
-            print(content.decode("utf-8"), end="")
+        header, content = blob.split(b"\0", maxsplit=1)
+        print(content.decode("utf-8"), end="")
 
 
 # create blob
 def hash_object():
     with open(sys.argv[3], "r") as f:
         content = f.read()
-        header = f"blob {len(content)}"
-        hash_value = hashlib.sha1(bytes(f"{header}\0{content}", "utf-8")).hexdigest()
-        print(hash_value.strip("\n"), end="")
-        if sys.argv[2] == "-w":
-            if not os.path.isdir(f".git/objects/{hash_value[:2]}"):
-                os.mkdir(f".git/objects/{hash_value[:2]}")
-            with open(f".git/objects/{hash_value[:2]}/{hash_value[2:]}", "wb") as blob:
-                blob.write(zlib.compress(bytes(f"{header}\0{content}", "utf-8")))
+    header = f"blob {len(content)}"
+    hash_value = hashlib.sha1(bytes(f"{header}\0{content}", "utf-8")).hexdigest()
+    print(hash_value.strip("\n"), end="")
+    if sys.argv[2] == "-w":
+        if not os.path.isdir(f".git/objects/{hash_value[:2]}"):
+            os.mkdir(f".git/objects/{hash_value[:2]}")
+        with open(f".git/objects/{hash_value[:2]}/{hash_value[2:]}", "wb") as blob:
+            blob.write(zlib.compress(bytes(f"{header}\0{content}", "utf-8")))
 
 
 # read tree
@@ -42,29 +43,29 @@ def ls_tree():
     tree_sha = sys.argv[3]
     with open(f".git/objects/{tree_sha[:2]}/{tree_sha[2:]}", "rb") as f:
         tree = zlib.decompress(f.read())
-        header, next_content = tree.split(b"\x00", maxsplit=1)
-        while next_content:
-            mode, after_mode = next_content.split(b" ", maxsplit=1)
-            name, after_name = after_mode.split(b"\x00", maxsplit=1)
-            sha = after_name[:20]
-            next_content = after_name[20:]
-            mode_name = "blob"
-            if mode == b"100644":       # regular file
-                mode = "100644"
-            elif mode == b"100755":     # executable file
-                mode = "100755"
-            elif mode == b"120000":     # symbolic link
-                mode = "120000"
-            elif mode == b"040000":     # directory
-                mode = "040000"
-                mode_name = "tree"
-            else:                       # gitlink / submodule (repos nested in other repos)
-                mode = "160000"
-                mode_name = "submodule"
-            if sys.argv[2] == "--name-only":        # only this flag is implemented
-                print(name.decode("utf-8"))
-            else:
-                print(f"{mode} {mode_name} {sha.hex()}    {name.decode("utf-8")}")
+    header, next_content = tree.split(b"\x00", maxsplit=1)
+    while next_content:
+        mode, after_mode = next_content.split(b" ", maxsplit=1)
+        name, after_name = after_mode.split(b"\x00", maxsplit=1)
+        sha = after_name[:20]
+        next_content = after_name[20:]
+        mode_name = "blob"
+        if mode == b"100644":       # regular file
+            mode = "100644"
+        elif mode == b"100755":     # executable file
+            mode = "100755"
+        elif mode == b"120000":     # symbolic link
+            mode = "120000"
+        elif mode == b"040000":     # directory
+            mode = "040000"
+            mode_name = "tree"
+        else:                       # gitlink / submodule (repos nested in other repos)
+            mode = "160000"
+            mode_name = "submodule"
+        if sys.argv[2] == "--name-only":        # only this flag is implemented
+            print(name.decode("utf-8"))
+        else:
+            print(f"{mode} {mode_name} {sha.hex()}    {name.decode("utf-8")}")
 
 
 '''
@@ -103,14 +104,13 @@ def add():
 def create_blob(path: str):
     with open(path, "r") as f:
         content = f.read()
-        header = f"blob {len(content)}"
-        hash_value = hashlib.sha1(bytes(f"{header}\0{content}", "utf-8")).hexdigest()
-
-        if not os.path.isdir(f".git/objects/{hash_value[:2]}"):
-            os.mkdir(f".git/objects/{hash_value[:2]}")
-        with open(f".git/objects/{hash_value[:2]}/{hash_value[2:]}", "wb") as blob:
-            blob.write(zlib.compress(bytes(f"{header}\0{content}", "utf-8")))
-        return hash_value
+    header = f"blob {len(content)}"
+    hash_value = hashlib.sha1(bytes(f"{header}\0{content}", "utf-8")).hexdigest()
+    if not os.path.isdir(f".git/objects/{hash_value[:2]}"):
+        os.mkdir(f".git/objects/{hash_value[:2]}")
+    with open(f".git/objects/{hash_value[:2]}/{hash_value[2:]}", "wb") as blob:
+        blob.write(zlib.compress(bytes(f"{header}\0{content}", "utf-8")))
+    return hash_value
 
 
 def write_tree(path: str):
@@ -146,6 +146,32 @@ def write_tree(path: str):
     return tree_sha1
 
 
+def handle_commit_tree(tree_sha, message, parent_sha=None):
+    date_seconds = int(time.time())
+    date_timezone = time.strftime("%z")
+
+    author_name = "Chilli Powder"
+    author_email = "chillipowder@spice.com"
+    author_info = f"{author_name} <{author_email}> {date_seconds} {date_timezone}"
+
+    writable_content = f"tree {tree_sha}\n"
+    if parent_sha:
+        writable_content += f"parent {parent_sha}\n"
+    writable_content += f"author {author_info}\ncommitter {author_info}\n\n{message}\n"
+    writable_content = writable_content.encode()
+
+    header = f"commit {len(writable_content)}\0".encode()
+    data = header + writable_content
+    hash_value = hashlib.sha1(data).hexdigest()
+
+    dir = f".git/objects/{hash_value[:2]}/"
+    os.makedirs(dir, exist_ok=True)
+    path = f"{dir}/{hash_value[2:]}"
+    with open(path, "wb") as f:
+        f.write(zlib.compress(data))
+
+    return hash_value
+
 def main():
     command = sys.argv[1]
     if command == "init":
@@ -160,6 +186,20 @@ def main():
         add()
     elif command == "write-tree":
         print(write_tree("./"))
+    elif command == "commit-tree":
+        if len(sys.argv) < 6:
+            print("Usage: git-lite commit-tree <tree_sha> [-p] [<commit_sha>] -m <message>")
+            sys.exit(1)
+        tree_sha = sys.argv[2]
+        message = None
+        parent_sha = None
+        if sys.argv[3] == "-p":
+            parent_sha = sys.argv[4]
+            message = sys.argv[6]
+        else:
+            message = sys.argv[4]
+        sha1 = handle_commit_tree(tree_sha, message, parent_sha)
+        print(sha1)
     else:
         raise RuntimeError(f"Unknown command #{command}")
 
